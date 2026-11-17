@@ -96,6 +96,8 @@ Bei Fehlern bleiben die letzten Messwerte erhalten, werden aber mit schlechter Q
 
 ## Entwicklung und Tests
 
+Die TypeScript-Quellen liegen unter `src/`. `npm run check` prüft die Typen. `npm run build` erzeugt `main.js` und die Module unter `lib/` für die direkte Installation von GitHub. GitHub Actions baut beide Node.js-Versionen und vergleicht das Ergebnis vor den Tests mit den ausgelieferten Dateien.
+
 `npm ci`, danach `npm run check` und `npm test`. Die Tests decken Protokoll-/Verschlüsselungsreferenzen, fragmentierte TCP-Antworten, History-Seiten, Fehlersituationen, Einheiten, Maskierung, Wiederanlauf sowie die offiziellen ioBroker-Paket- und Startprüfungen ab. Die GitHub-Prüfung verwendet Node.js 22 und 24.
 
 Die Datei `.github/workflows/publish.yml` übernimmt den manuellen Veröffentlichungsablauf des Faikin-Projekts. Sie wird nur über `workflow_dispatch` gestartet und benötigt für npm ein eingerichtetes `NPM_TOKEN`. Normale GitHub-Pushes veröffentlichen kein npm-Paket.

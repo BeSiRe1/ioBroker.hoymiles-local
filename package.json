@@ -17,11 +17,12 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "check": "node --check main.js && node --check lib/protocol.js && node --check lib/runtime.js && node --check lib/values.js && node --check lib/publisher.js && node --check lib/daily.js && node --check lib/yields.js && node --check lib/backup.js",
+    "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run test:unit && npm run test:package && npm run test:integration",
     "test:unit": "node --test --test-concurrency=1 test/*.test.js",
     "test:package": "mocha --exit test/package.js",
-    "test:integration": "mocha --exit test/integration.js"
+    "test:integration": "mocha --exit test/integration.js",
+    "build": "tsc -p tsconfig.json"
   },
   "files": [
     "main.js",
@@ -46,6 +47,8 @@
   },
   "devDependencies": {
     "@iobroker/testing": "6.3.1",
-    "mocha": "12.0.3"
+    "@types/node": "22.20.5",
+    "mocha": "12.0.3",
+    "typescript": "5.9.3"
   }
 }
