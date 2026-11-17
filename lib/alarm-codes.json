@@ -148,6 +148,7 @@
   "5520": "Fehlercode 02",
   "8310": "Durch Fernbedienung abgeschaltet",
   "8320": "Standby-Modus per Fernbedienung aktiviert",
+  "8415": "DTU-Alarm 8415 (Bedeutung undokumentiert)",
   "9000": "Durch Diebstahlsicherung gesperrt",
   "10120": "Anormale SPI-Kommunikation",
   "10121": "Übertemperaturschutz",

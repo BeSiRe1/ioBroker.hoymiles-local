@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0 (2026-11-17)
+
+- Use the dedicated ioBroker package and instance name hoymiles-local.
+- Preserve newer local yield records during offline restore and flag retained measurements and alarms after restart.
+
 ## 0.4.2 (2026-11-10)
 
 - Bind the configuration status display to a readonly live state so manual queries and automatic backups update the displayed status and last-success time.
