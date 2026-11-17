@@ -1,8 +1,12 @@
 {
   "common": {
-    "name": "hoymiles-wifi",
-    "version": "0.4.2",
+    "name": "hoymiles-local",
+    "version": "0.5.0",
     "news": {
+      "0.5.0": {
+        "de": "Eigener Adaptername hoymiles-local, Schutz lokaler Erträge bei Offline-Wiederherstellung und Kennzeichnung veralteter Messwerte nach Neustart.",
+        "en": "Use the hoymiles-local adapter name, protect existing yields during offline restoration and mark retained readings stale on startup."
+      },
       "0.4.2": {
         "de": "Sicherungsstatus und letzten Erfolg in den Einstellungen laufend aktualisieren; Admin ab 7.1.0 verwenden.",
         "en": "Keep backup status and last success live in configuration; require Admin 7.1.0 or newer."
@@ -53,8 +57,8 @@
       }
     },
     "titleLang": {
-      "en": "Hoymiles WiFi",
-      "de": "Hoymiles WiFi"
+      "en": "Hoymiles Local",
+      "de": "Hoymiles Local"
     },
     "desc": {
       "en": "Reads Hoymiles WiFi DTUs locally, including PV inputs, historical power curves and device diagnostics.",

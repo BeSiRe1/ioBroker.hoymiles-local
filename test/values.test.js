@@ -8,7 +8,9 @@ const data={device_serial_number:'4143A0000001',timestamp:100,dtu_power:'1290',d
 const map=items=>Object.fromEntries(items.map(x=>[x.id,x.val]));
 test('alarm labels cover the combined list without rejecting unknown numeric codes',()=>{
   const states=require('../lib/alarm-codes.json');
-  assert.equal(Object.keys(states).length,227);
+  assert.equal(Object.keys(states).length,228);
+  assert.equal(alarmValues({warns:[{code:8415}]})[0].states[8415],states[8415]);
+  assert.match(states[8415],/DTU-Alarm 8415/);
   for(const [code,label] of Object.entries(states)){assert.match(code,/^\d+$/);assert.equal(typeof label,'string');assert.ok(label.length>0);assert.ok(!/^\d+\s*[–-]/.test(label));assert.ok(!/undefined|null/.test(label));}
   assert.deepEqual(Object.fromEntries(Object.entries(states).slice(0,5)),{'0':'Kein aktiver Alarm','1':'Gerätestart / Neustart','2':'Zeitkalibrierung','3':'EEPROM Lese-/Schreibfehler während des Betriebs','4':'Offline'});
   assert.match(states[141],/Netzüberspannung/);assert.match(states[221],/modellabhängig/);assert.match(states[0],/Kein aktiver Alarm/);
@@ -31,6 +33,8 @@ test('reported units retain their numeric scaling and existing metadata receives
 function memory(){
   const objects=new Map(),states=new Map(),writes=[];
   const adapter={setObjectNotExistsAsync:async(id,obj)=>{if(!objects.has(id))objects.set(id,obj);},getObjectAsync:async id=>objects.get(id),extendObjectAsync:async(id,obj)=>{const old=objects.get(id)||{};objects.set(id,{...old,...obj,common:{...old.common,...obj.common}});},delObjectAsync:async(id,options)=>{assert.equal(options.recursive,true);for(const key of [...objects.keys()])if(key===id||key.startsWith(id+'.'))objects.delete(key);for(const key of [...states.keys()])if(key===id||key.startsWith(id+'.'))states.delete(key);},setStateAsync:async(id,state)=>{states.set(id,state);writes.push({id,...state});},getStateAsync:async id=>states.get(id)};
+  adapter.namespace='hoymiles-local.0';
+  adapter.getAdapterObjectsAsync=async()=>Object.fromEntries([...objects].map(([id,o])=>[adapter.namespace+'.'+id,o]));
   return {objects,states,writes,publisher:new Publisher(adapter)};
 }
 test('normalizes units and negative temperatures, keeps panel identity by port',()=>{
@@ -93,6 +97,22 @@ test('publisher writes unchanged values again and invalidates only the failed gr
   const count=m.writes.length;await m.publisher.publish('DTU',items,'live');assert.ok(m.writes.length>count);
   await m.publisher.invalidate('live');assert.equal(m.states.get('DTU.grid.power').q,0x40);assert.equal(m.states.get('DTU.history.dailyEnergy').q,0);
   for(const object of m.objects.values())if(object.type==='state')assert.equal(object.common.write,false);
+});
+test('offline startup flags retained measurements and alarms while preserving archives and other quality bits',async()=>{
+  const m=memory(),sn='4143A0000001';
+  const entries={'grid.power':420,'inverter.errorCode':8415,'pv0.dailyEnergyDtu':0.8,'grid.dailyEnergy':1.2,'grid.yields.month':12,'history.totalEnergy':812};
+  for(const [id,val] of Object.entries(entries)){
+    m.objects.set(sn+'.'+id,{type:'state'});
+    m.states.set(sn+'.'+id,{val,q:0x10,ack:true});
+  }
+  const client={initialize:async()=>{throw Error('offline');},close(){}};
+  const runtime=new Runtime({config:{host:'localhost'},publisher:m.publisher,client,log:{warn(){},debug(){}}});
+  try{
+    await runtime.start();
+    for(const id of ['grid.power','inverter.errorCode','pv0.dailyEnergyDtu'])assert.deepEqual(m.states.get(sn+'.'+id),{val:entries[id],q:0x50,ack:true});
+    for(const id of ['grid.dailyEnergy','grid.yields.month','history.totalEnergy'])assert.equal(m.states.get(sn+'.'+id).q,0x10);
+    assert.equal(m.states.get('info.connection').val,false);
+  }finally{await runtime.stop();}
 });
 test('runtime marks failures, preserves old values, then recovers and refreshes encryption handshake',async()=>{
   const m=memory(),serial='4143A0000001';let failures=0,initializations=0,now=1000,closed=false;

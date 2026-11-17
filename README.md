@@ -1,8 +1,8 @@
-# ioBroker.hoymiles-wifi
+# ioBroker.hoymiles-local
 
 Lokaler ioBroker-Adapter für Hoymiles-WLAN-DTUs. / Local ioBroker adapter for Hoymiles WiFi DTUs.
 
-**Entwicklungsversion 0.4.2.** Die Unterstützung einzelner Abfragen hängt von DTU und Firmware ab. Der Adapter verändert keine Geräteeinstellungen und sendet keine Neustart-, Leistungsbegrenzungs- oder Firmwarebefehle.
+**Entwicklungsversion 0.5.0.** Die Unterstützung einzelner Abfragen hängt von DTU und Firmware ab. Der Adapter verändert keine Geräteeinstellungen und sendet keine Neustart-, Leistungsbegrenzungs- oder Firmwarebefehle.
 
 ## Installation
 
@@ -11,6 +11,10 @@ Voraussetzungen: Node.js ab 22.19.0, ioBroker js-controller ab 6 und Admin ab 7.
 Nach Bereitstellung dieses Repositorys in ioBroker unter **Adapter → Benutzerdefinierte Installation → Von GitHub** die Adresse `https://github.com/BeSiRe1/ioBroker.hoymiles-wifi` verwenden. Danach eine Instanz anlegen, DTU-Adresse eintragen und speichern. Ein Hoymiles-Konto ist nicht erforderlich.
 
 Nur eine aktive lokale Integration sollte dieselbe DTU abfragen. Eine bestehende ioBroker- oder Home-Assistant-Anbindung vor dem Umstieg deaktivieren.
+
+### Umstieg von hoymiles-wifi
+
+Vor dem Wechsel die Ertragssicherung der bisherigen Instanz prüfen und ihren Zielordner notieren. Die alte Instanz anhalten. In der neuen Instanz DTU-Adresse und denselben Sicherungsordner eintragen, die Sicherung aktivieren, speichern und **Sicherung wiederherstellen** wählen. Erträge von Gesamtanlage und PV-Eingängen vergleichen. Vorhandene Aliase und direkte Verweise erst auf `hoymiles-local.0` umstellen, wenn die jeweiligen neuen Ziele vorhanden sind. Die bisherige Instanz und deren gespeicherte Daten können bis zur Prüfung erhalten bleiben.
 
 ## Einstellungen
 
@@ -26,7 +30,7 @@ Alle Anfragen laufen durch dieselbe Warteschlange. Pro Anfrage wird eine eigene 
 
 ## Datenpunkte
 
-Die Geräte liegen unter `hoymiles-wifi.0.<DTU-Seriennummer>`. Normalisierte Datenpunkte werden nur angelegt, wenn die DTU die zugehörigen Werte liefert. Ein echter Wert 0 bleibt 0; fehlende Daten werden nicht durch eine erfundene 0 ersetzt.
+Die Geräte liegen unter `hoymiles-local.0.<DTU-Seriennummer>`. Normalisierte Datenpunkte werden nur angelegt, wenn die DTU die zugehörigen Werte liefert. Ein echter Wert 0 bleibt 0; fehlende Daten werden nicht durch eine erfundene 0 ersetzt.
 
 Bei tatsächlich enthaltenen Wechselrichter-/PV-Datensätzen gelten für die Standardmesswerte die im Protobuf-Protokoll definierten Nullwerte, die auf der Leitung nicht nochmals übertragen werden müssen. Dadurch werden beispielsweise Nachtleistung und leere Tageszähler korrekt 0. Werte, die in einer neuen vollständigen Antwort fehlen, werden auf null mit schlechter Qualität gesetzt und behalten keinen scheinbar gültigen alten Wert.
 
@@ -102,6 +106,6 @@ This development adapter reads a Hoymiles WiFi DTU directly over the local netwo
 
 Managed total/PV daily energy counters reset at midnight in Europe/Berlin, including offline operation and daylight-saving changes. Original device counters remain available as `dailyEnergyDtu`. Persistent restart protection and a current-day confirmation guard prevent the previous day's final value from immediately repopulating a reset counter; `info.dailyConfirmed` indicates confirmation.
 
-Normalized grid, inverter, direct PV and history states are provided where supported. Version 0.4.2 uses only the simplified inverter and direct PV structure, with device online/offline marking through info.connected and active inverter alarms through inverter.errorCode. Passwords and encryption material are never published. Historical pages are committed only as a complete result. Local history availability depends on the device and firmware and is not an unlimited cloud archive. Failed requests preserve old values with bad quality, publish diagnostic status and recover automatically. The adapter has no device-changing controls.
+Normalized grid, inverter, direct PV and history states are provided where supported. Version 0.5.0 uses only the simplified inverter and direct PV structure, with device online/offline marking through info.connected and active inverter alarms through inverter.errorCode. Passwords and encryption material are never published. Historical pages are committed only as a complete result. Local history availability depends on the device and firmware and is not an unlimited cloud archive. Failed requests preserve old values with bad quality, publish diagnostic status and recover automatically. The adapter has no device-changing controls.
 
 Only one local integration should query the same DTU. See the German tables above for state groups and configuration. Tests and CI cover protocol, networking, projections and ioBroker startup. See [CHANGELOG.md](CHANGELOG.md), [NOTICE.md](NOTICE.md) and [LICENSE](LICENSE).

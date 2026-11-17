@@ -7,7 +7,7 @@
 //
 // Startet und beendet die lokale Hoymiles-DTU-Anbindung.
 //
-// Version: 0.1.1.1 (10.11.2026)
+// Version: 0.1.1.2 (17.11.2026)
 //
 // ************************************************************
 // ============================================================
@@ -37,7 +37,7 @@ const {formatBackupStatus}=require('./lib/backup');
 // ============================================================
 class HoymilesWifi extends Adapter{
   constructor(options={}){
-    super({...options,name:'hoymiles-wifi'});
+    super({...options,name:'hoymiles-local'});
     this.unloading=false;
     this.on('ready',()=>this.onReady().catch(error=>this.log.error(`Adapterstart fehlgeschlagen: ${error.code||'INITIALIZATION_FAILED'}`)));
     this.on('unload',callback=>this.onUnload(callback));
@@ -77,6 +77,9 @@ if(require.main!==module)module.exports=options=>new HoymilesWifi(options);else 
 // ============================================================
 // [BLOCK:1000] Änderungsverlauf
 // ============================================================
+// 0.1.1.2 (17.11.2026):
+// - Instanz unter dem eigenen Adapternamen hoymiles-local starten.
+//
 // 0.1.1.1 (10.11.2026): 
 // - Statusabfrage und automatische Statusanzeige mit derselben Textformatierung versorgen.
 //
