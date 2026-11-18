@@ -26,7 +26,7 @@ function memory(daily,archive){
   };
   const clock={now:day8};
   const log=Object.fromEntries(['info','warn','debug','error'].map(level=>[level,message=>messages.push({level,message})]));
-  const runtime=()=>new Runtime({config:{host:'127.0.0.1'},publisher:new Publisher(adapter),client:{close:()=>{},initialize:async()=>{throw Error('DTU access is not part of this test');}},log,now:()=>clock.now});
+  const runtime=()=>new Runtime({config:{host:'127.0.0.1',backupToUserdata:false},publisher:new Publisher(adapter),client:{close:()=>{},initialize:async()=>{throw Error('DTU access is not part of this test');}},log,now:()=>clock.now});
   const value=id=>states.get(serial+'.'+id)?.val;
   return {objects,states,writes,attempts,failures,readFailures,messages,clock,runtime,value};
 }

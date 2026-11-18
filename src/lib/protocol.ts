@@ -3,11 +3,11 @@
 // ============================================================
 
 // ************************************************************
-// Hoymiles WiFi – Protokoll
+// Hoymiles Local – Protokoll
 //
 // Liest DTU-Antworten mit geordneten Verbindungen und vollständiger Paketprüfung.
 //
-// Version: 0.2.0.0 (17.11.2026)
+// Version: 0.2.0.1 (18.11.2026)
 //
 // ************************************************************
 // ============================================================
@@ -304,6 +304,9 @@ export {schema,COMMANDS,ProtocolError,crc16,crypt,encode,decode,decodeWarning,fr
 // ============================================================
 // [BLOCK:1000] Änderungsverlauf
 // ============================================================
+// 0.2.0.1 (18.11.2026):
+// - Skriptname im Systemkopf auf Hoymiles Local korrigiert.
+//
 // 0.2.0.0 (17.11.2026):
 // - Modul auf TypeScript umgestellt.
 //

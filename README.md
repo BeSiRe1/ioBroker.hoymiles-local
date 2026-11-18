@@ -2,19 +2,19 @@
 
 Lokaler ioBroker-Adapter für Hoymiles-WLAN-DTUs. / Local ioBroker adapter for Hoymiles WiFi DTUs.
 
-**Entwicklungsversion 0.5.0.** Die Unterstützung einzelner Abfragen hängt von DTU und Firmware ab. Der Adapter verändert keine Geräteeinstellungen und sendet keine Neustart-, Leistungsbegrenzungs- oder Firmwarebefehle.
+**Entwicklungsversion 0.6.0.** Die Unterstützung einzelner Abfragen hängt von DTU und Firmware ab. Der Adapter verändert keine Geräteeinstellungen und sendet keine Neustart-, Leistungsbegrenzungs- oder Firmwarebefehle.
 
 ## Installation
 
 Voraussetzungen: Node.js ab 22.19.0, ioBroker js-controller ab 6 und Admin ab 7.1.0. Die DTU muss vom ioBroker-Rechner im lokalen Netzwerk erreichbar sein; Standardport ist TCP 10081.
 
-Nach Bereitstellung dieses Repositorys in ioBroker unter **Adapter → Benutzerdefinierte Installation → Von GitHub** die Adresse `https://github.com/BeSiRe1/ioBroker.hoymiles-wifi` verwenden. Danach eine Instanz anlegen, DTU-Adresse eintragen und speichern. Ein Hoymiles-Konto ist nicht erforderlich.
+Nach Bereitstellung dieses Repositorys in ioBroker unter **Adapter → Benutzerdefinierte Installation → Von GitHub** die Adresse `https://github.com/BeSiRe1/ioBroker.hoymiles-local` verwenden. Danach eine Instanz anlegen, DTU-Adresse eintragen und speichern. Ein Hoymiles-Konto ist nicht erforderlich.
 
 Nur eine aktive lokale Integration sollte dieselbe DTU abfragen. Eine bestehende ioBroker- oder Home-Assistant-Anbindung vor dem Umstieg deaktivieren.
 
 ### Umstieg von hoymiles-wifi
 
-Vor dem Wechsel die Ertragssicherung der bisherigen Instanz prüfen und ihren Zielordner notieren. Die alte Instanz anhalten. In der neuen Instanz DTU-Adresse und denselben Sicherungsordner eintragen, die Sicherung aktivieren, speichern und **Sicherung wiederherstellen** wählen. Erträge von Gesamtanlage und PV-Eingängen vergleichen. Vorhandene Aliase und direkte Verweise erst auf `hoymiles-local.0` umstellen, wenn die jeweiligen neuen Ziele vorhanden sind. Die bisherige Instanz und deren gespeicherte Daten können bis zur Prüfung erhalten bleiben.
+Die alte Instanz anhalten. In der neuen Instanz die DTU-Adresse eintragen und speichern. Sie beginnt mit eigenen Tageszählern und Ertragsarchiven; eine Übernahme der alten Bestände erfolgt einmalig außerhalb des Adapters. Vorhandene Aliase und direkte Verweise erst auf `hoymiles-local.0` umstellen, wenn die jeweiligen neuen Ziele vorhanden sind. Die bisherige Instanz und deren gespeicherte Daten können bis zur Prüfung erhalten bleiben.
 
 ## Einstellungen
 
@@ -25,6 +25,7 @@ Vor dem Wechsel die Ertragssicherung der bisherigen Instanz prüfen und ihren Zi
 | Livewerte | 35 Sekunden | Abstand nach Abschluss einer Liveabfrage; mindestens 35 Sekunden |
 | History | 300 Sekunden | Mindestens fünf Minuten; Hintergrundabfragen können bis zum nächsten freien Abfragefenster warten |
 | Antwortwartezeit | 10 Sekunden | Maximal 3–30 Sekunden pro Anfrage |
+| Erträge in 0_userdata.0 sichern | ein | Sicherungsdatei, siehe [Sicherung](#sicherung) |
 
 Alle Anfragen laufen durch dieselbe Warteschlange. Pro Anfrage wird eine eigene TCP-Verbindung geöffnet und anschließend geschlossen. Nach dem Schließen liegen mindestens zwei Sekunden bis zur nächsten Anfrage. Es gibt keinen regelmäßigen zusätzlichen Heartbeat und keinen automatisch aktivierten Performance-Modus. Eine zusätzliche Abfrage erfolgt frühestens fünf Sekunden nach einer Liveabfrage; danach bleibt die nächste Liveabfrage geplant.
 
@@ -74,13 +75,19 @@ Unter `grid.yields` und den jeweiligen `pv0.yields`, `pv1.yields` usw. werden be
 
 Maßgeblich ist der persistente Speicher `internal.yields`. Wiederholte Messwerte und Neustarts werden nicht doppelt gezählt. Monats-/Jahreswechsel und Sommer-/Winterzeit folgen Europe/Berlin. Ein nicht lesbarer Speicher bleibt erhalten; `info.yieldsError` zeigt den Fehler. Neue Installationen beginnen ohne persönliche Altdaten. Eine vorhandene Historie wird bei Bedarf einmalig außerhalb des Adapters übertragen; persönliche Quell-IDs sind kein Bestandteil des Pakets.
 
-### Externe Ertragssicherung
+### Sicherung
 
-In den Adaptereinstellungen kann die Ertragssicherung eingeschaltet und ein vorhandener ioBroker-Ordner unter `0_userdata.0` ausgewählt werden. Standardmäßig ist sie ausgeschaltet. Der Adapter legt dort `Hoymiles_<DTU-Seriennummer>_Ertragssicherung` an. Das JSON enthält den vollständigen Ertragsbestand und den Tageswechsel-Schutz, ohne Kennwörter oder Verbindungsdaten. Es bleibt beim Löschen dieser Adapterinstanz erhalten. Änderungen werden nach erfolgreicher interner Speicherung gesichert; unveränderte Daten werden nicht erneut geschrieben.
+Löscht man eine Instanz, entfernt ioBroker auch alle ihre Datenpunkte, also Tageszähler und Ertragsarchive. Deshalb legt der Adapter (abschaltbar in den Einstellungen) zusätzlich eine Sicherung an:
 
-Nach einer Neuinstallation denselben Ordner auswählen, Einstellungen speichern und **Sicherung wiederherstellen** betätigen. Bei unbekannter DTU kann genau eine Sicherung im Ordner auch offline zugeordnet werden; bei mehreren Geräten muss zuerst die DTU-Verbindung stehen. Neu erfasste Tageswerte werden beim Wiederherstellen erhalten. Widersprüchliche Bestände, beschädigte Sicherungen und anderweitig belegte Datenpunkte werden nicht überschrieben. Eine zusätzliche Sicherung mit mehr Daten wird nicht automatisch durch einen neuen leeren Bestand ersetzt.
+- Datei `0_userdata.0/hoymiles-local/<DTU-Seriennummer>.json` in den ioBroker-Dateien. Sie bleibt beim Löschen der Instanz erhalten und wird von BackItUp mitgesichert. Sie enthält Tageszähler, Vortagsschutz und das vollständige Ertragsarchiv, aber keine Kennwörter oder Verbindungsdaten.
+- Geschrieben wird sie alle 5 Minuten, beim Tageswechsel und beim Stoppen des Adapters.
+- Startet eine Instanz **ohne eigenen Bestand** (`internal.dailyEnergy` und `internal.yields` fehlen), z. B. nach einer Neuinstallation, stellt sie Tageszähler und Erträge automatisch daraus wieder her, sobald die DTU-Seriennummer bekannt ist, und schreibt das als Warnung ins Log. Ein vorhandener eigener Bestand hat immer Vorrang.
+- Eine ungültige oder nicht lesbare Sicherungsdatei wird nicht überschrieben; das Log nennt die Datei.
+- Wer bewusst bei 0 anfangen will, löscht die Datei vorher, z. B. über Admin → Dateien → `0_userdata.0`.
 
-Die Konfiguration zeigt den Status und den letzten erfolgreichen Sicherungszeitpunkt fortlaufend über `info.yieldBackupText`. Die Anzeige aktualisiert sich bei einer neuen Sicherung und nach **Status abfragen** automatisch. Die einzelnen Angaben stehen unter `info.yieldBackupStatus`, `info.yieldBackupError`, `info.yieldBackupLastSuccess` und `info.yieldBackupTarget`. Nach einem Speicherfehler wird die Übertragung mit dem nächsten Abgleich erneut versucht.
+Beim Wiederherstellen aus einer ioBroker-Sicherung mit BackItUp bleibt ohnehin alles erhalten, auch der interne Zustand der Instanz.
+
+Bis Version 0.5.0 lag die Sicherung als Datenpunkt `Hoymiles_<DTU-Seriennummer>_Ertragssicherung` in einem gewählten Ordner unter `0_userdata.0`. Dieser Datenpunkt wird nicht mehr verwendet und kann nach dem Update gelöscht werden.
 
 ### Datenalter und Fehler
 
@@ -100,14 +107,14 @@ Die TypeScript-Quellen liegen unter `src/`. `npm run check` prüft die Typen. `n
 
 `npm ci`, danach `npm run check` und `npm test`. Die Tests decken Protokoll-/Verschlüsselungsreferenzen, fragmentierte TCP-Antworten, History-Seiten, Fehlersituationen, Einheiten, Maskierung, Wiederanlauf sowie die offiziellen ioBroker-Paket- und Startprüfungen ab. Die GitHub-Prüfung verwendet Node.js 22 und 24.
 
-Die Datei `.github/workflows/publish.yml` übernimmt den manuellen Veröffentlichungsablauf des Faikin-Projekts. Sie wird nur über `workflow_dispatch` gestartet und benötigt für npm ein eingerichtetes `NPM_TOKEN`. Normale GitHub-Pushes veröffentlichen kein npm-Paket.
-
 ## English
 
-This development adapter reads a Hoymiles WiFi DTU directly over the local network. It requires Node.js 22.19+, js-controller 6+ and Admin 5+. Configure the DTU host and TCP port 10081. Live polling defaults to 35 seconds and historical polling to five minutes. All requests share a serialized queue, use a short-lived connection and wait at least two seconds after closing.
+This development adapter reads a Hoymiles WiFi DTU directly over the local network. It requires Node.js 22.19+, js-controller 6+ and Admin 7.1+. Configure the DTU host and TCP port 10081. Live polling defaults to 35 seconds and historical polling to five minutes. All requests share a serialized queue, use a short-lived connection and wait at least two seconds after closing.
 
 Managed total/PV daily energy counters reset at midnight in Europe/Berlin, including offline operation and daylight-saving changes. Original device counters remain available as `dailyEnergyDtu`. Persistent restart protection and a current-day confirmation guard prevent the previous day's final value from immediately repopulating a reset counter; `info.dailyConfirmed` indicates confirmation.
 
-Normalized grid, inverter, direct PV and history states are provided where supported. Version 0.5.0 uses only the simplified inverter and direct PV structure, with device online/offline marking through info.connected and active inverter alarms through inverter.errorCode. Passwords and encryption material are never published. Historical pages are committed only as a complete result. Local history availability depends on the device and firmware and is not an unlimited cloud archive. Failed requests preserve old values with bad quality, publish diagnostic status and recover automatically. The adapter has no device-changing controls.
+Normalized grid, inverter, direct PV and history states are provided where supported. The adapter uses only the simplified inverter and direct PV structure, with device online/offline marking through info.connected and active inverter alarms through inverter.errorCode. Passwords and encryption material are never published. Historical pages are committed only as a complete result. Local history availability depends on the device and firmware and is not an unlimited cloud archive. Failed requests preserve old values with bad quality, publish diagnostic status and recover automatically. The adapter has no device-changing controls.
+
+Confirmed daily counters and yield archives are backed up (can be disabled) to the file `0_userdata.0/hoymiles-local/<DTU serial>.json` every 5 minutes, at the day change and on stop. A new instance without own data restores them automatically from this file.
 
 Only one local integration should query the same DTU. See the German tables above for state groups and configuration. Tests and CI cover protocol, networking, projections and ioBroker startup. See [CHANGELOG.md](CHANGELOG.md), [NOTICE.md](NOTICE.md) and [LICENSE](LICENSE).

@@ -1,96 +1,91 @@
 'use strict';
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {YieldBackup,prepareRestore,formatBackupStatus}=require('../lib/backup');
+const {YieldBackup,BACKUP_META_ID,BACKUP_INTERVAL_MS,backupPath,serialize,parse}=require('../lib/backup');
 const {YieldArchive}=require('../lib/yields');
 const {Daily}=require('../lib/daily');
 const {Runtime}=require('../lib/runtime');
 const {Publisher}=require('../lib/publisher');
-const serial='4143A0000001',folder='0_userdata.0.Energie.Test',target=folder+'.Hoymiles_'+serial+'_Ertragssicherung',now=Date.parse('2026-11-10T12:00:00+01:00');
+const serial='4143A0000001',file='hoymiles-local/'+serial+'.json',now=Date.parse('2026-11-10T12:00:00+01:00');
 function payload(time,amount){const daily=new Daily(time);daily.state.counters={'grid.dailyEnergy':{value:amount,confirmed:true,boundary:null},'pv0.dailyEnergy':{value:amount/2,confirmed:true,boundary:null}};const archive=new YieldArchive(time);archive.observe(daily.state);return {daily:JSON.parse(daily.serialize()),yields:JSON.parse(archive.serialize())};}
-function memory(){
-  const objects=new Map([[folder,{_id:folder,type:'folder',common:{name:'Test'}}]]),states=new Map(),writes=[],calls=[];const faults=new Set();const clock={now};
-  const adapter={namespace:'hoymiles-local.0',getForeignObjectAsync:async id=>{calls.push(id);return objects.get(id);},getForeignStateAsync:async id=>{calls.push(id);if(faults.has('read'))throw Error('fixture');return states.get(id);},getForeignObjectsAsync:async pattern=>Object.fromEntries([...objects].filter(([id,o])=>o.type==='state'&&id.startsWith(folder+'.Hoymiles_'))),setForeignObjectNotExistsAsync:async(id,obj)=>{if(!objects.has(id))objects.set(id,{_id:id,...obj});},setForeignStateAsync:async(id,state)=>{if(faults.has('write'))throw Error('fixture');states.set(id,{...state});writes.push({id,...state});},getStateAsync:async id=>states.get(id),setStateAsync:async(id,s)=>{if(faults.has(id))throw Error('fixture');states.set(id,s);},getObjectAsync:async id=>objects.get(id),setObjectNotExistsAsync:async(id,obj)=>{if(!objects.has(id))objects.set(id,{_id:id,...obj});},extendObjectAsync:async(id,obj)=>{const old=objects.get(id)||{};objects.set(id,{...old,...obj,common:{...old.common,...obj.common}});}};
-  const config={host:'127.0.0.1',backupEnabled:true,backupFolder:folder},backup=()=>new YieldBackup({adapter,config,now:()=>clock.now});return {adapter,config,backup,objects,states,writes,calls,faults,clock};
+function memory({backupToUserdata=true}={}){
+  const objects=new Map(),states=new Map(),files=new Map(),fileWrites=[],messages=[],faults=new Set();const clock={now};
+  const log=Object.fromEntries(['info','warn','debug','error'].map(level=>[level,message=>messages.push({level,message})]));
+  const adapter={namespace:'hoymiles-local.0',log,
+    fileExistsAsync:async(meta,name)=>{if(faults.has('exists'))throw Error('fixture');return files.has(meta+'/'+name);},
+    readFileAsync:async(meta,name)=>{if(faults.has('read'))throw Error('fixture');if(!files.has(meta+'/'+name))throw Error('Not exists');return {file:files.get(meta+'/'+name)};},
+    writeFileAsync:async(meta,name,data)=>{if(faults.has('write'))throw Error('fixture');files.set(meta+'/'+name,String(data));fileWrites.push({meta,name,data:String(data)});},
+    getForeignObjectAsync:async id=>objects.get(id),setForeignObjectAsync:async(id,obj)=>{objects.set(id,{_id:id,...obj});},
+    getStateAsync:async id=>states.get(id),setStateAsync:async(id,s)=>{states.set(id,s);},getObjectAsync:async id=>objects.get(id),
+    setObjectNotExistsAsync:async(id,obj)=>{if(!objects.has(id))objects.set(id,{_id:id,...obj});},extendObjectAsync:async(id,obj)=>{const old=objects.get(id)||{};objects.set(id,{...old,...obj,common:{...old.common,...obj.common}});}};
+  const config={host:'127.0.0.1',backupToUserdata};
+  const backup=()=>new YieldBackup({adapter,config,now:()=>clock.now});
+  const runtime=()=>new Runtime({config,publisher:new Publisher(adapter),client:{close(){}},log,now:()=>clock.now});
+  const store=(data,id=serial)=>files.set(BACKUP_META_ID+'/'+backupPath(id),serialize(id,data,'hoymiles-local.0',clock.now));
+  return {adapter,config,backup,runtime,objects,states,files,fileWrites,messages,faults,clock,store,value:id=>states.get(serial+'.'+id)?.val};
 }
-test('disabled backup performs no foreign reads or writes',async()=>{const m=memory();m.config.backupEnabled=false;const b=m.backup();assert.equal((await b.sync(serial,payload(now,1))).status,'disabled');assert.equal((await b.inspect()).status,'disabled');assert.equal(m.calls.length,0);assert.equal(m.writes.length,0);});
-test('backup stores the complete validated state, reads it back and skips unchanged data',async()=>{const m=memory(),b=m.backup(),p=payload(now,1.2);assert.equal((await b.sync(serial,p)).status,'saved');const record=JSON.parse(m.states.get(target).val);assert.deepEqual(record.payload,p);assert.equal(record.deviceSerial,serial);assert.equal(m.objects.get(target).common.write,false);assert.equal(record.payload.daily.counters['grid.dailyEnergy'].value,1.2);await b.sync(serial,p);m.clock.now+=61000;await b.sync(serial,p);assert.equal(m.writes.length,1);assert.equal(b.lastSuccess,now);assert.equal(JSON.stringify(record).includes('host'),false);});
-test('a new instance cannot overwrite an existing richer backup with empty or smaller data',async()=>{const m=memory();await m.backup().sync(serial,payload(now,2));const original=m.states.get(target).val;const b=m.backup();assert.equal((await b.sync(serial,payload(now,0))).status,'restoreRequired');assert.equal(m.states.get(target).val,original);assert.equal(m.writes.length,1);assert.equal((await b.sync(serial,payload(now,2.5))).status,'saved');assert.equal(m.writes.length,2);});
-test('tampered data, occupied targets and invalid folders are protected',async()=>{
- const m=memory();await m.backup().sync(serial,payload(now,1));const r=JSON.parse(m.states.get(target).val);r.payload.daily.counters['grid.dailyEnergy'].value=999;m.states.get(target).val=JSON.stringify(r);const original=m.states.get(target).val;assert.equal((await m.backup().sync(serial,payload(now,2))).error,'INVALID_BACKUP');assert.equal(m.states.get(target).val,original);
- m.objects.set(target,{type:'state',common:{type:'string'},native:{}});assert.equal((await m.backup().sync(serial,payload(now,2))).error,'BACKUP_TARGET_OCCUPIED');
- for(const id of ['hoymiles-local.0','0_userdata.0..x','0_userdata.0.x*']){m.config.backupFolder=id;assert.equal((await m.backup().sync(serial,payload(now,1))).error,'INVALID_BACKUP_FOLDER');}
+test('disabled backup neither reads nor writes files',async()=>{
+  const m=memory({backupToUserdata:false}),b=m.backup();m.store(payload(now,1));
+  assert.equal(await b.read(serial),null);await b.write(serial,payload(now,1),true);assert.equal(m.fileWrites.length,0);
 });
-test('write failures are visible and a later retry succeeds without duplicate writes',async()=>{const m=memory(),b=m.backup();m.faults.add('write');assert.equal((await b.sync(serial,payload(now,1))).error,'BACKUP_WRITE_FAILED');m.faults.clear();assert.equal((await b.sync(serial,payload(now,1))).status,'saved');assert.equal(m.writes.length,1);});
-test('backup remains after deletion of own adapter states and restores offline without double counting',async()=>{
- const m=memory(),old=payload(now,1.2);await m.backup().sync(serial,old);m.states.set(serial+'.internal.yields',{val:'own-state'});for(const key of [...m.states.keys()])if(key.startsWith(serial+'.'))m.states.delete(key);
- const restored=await prepareRestore(m.backup(),undefined,undefined,now);assert.equal(restored.serial,serial);assert.deepEqual(restored.payload,old);assert.ok(m.states.has(target));
- const a=new YieldArchive(now,restored.payload.yields);a.observe(restored.payload.daily);a.observe(restored.payload.daily);assert.equal(a.outputs().grid.month,1.2);
+test('backup is written as file below 0_userdata.0 and throttled to five minutes unless forced',async()=>{
+  const m=memory(),b=m.backup();
+  await b.write(serial,payload(now,1),true);
+  assert.equal(m.fileWrites.length,1);assert.equal(m.fileWrites[0].meta,'0_userdata.0');assert.equal(m.fileWrites[0].name,file);
+  const record=JSON.parse(m.fileWrites[0].data);assert.equal(record.format,1);assert.equal(record.device.serial,serial);assert.equal(record.instance,'hoymiles-local.0');assert.equal(record.daily.counters['grid.dailyEnergy'].value,1);assert.ok(record.yields.scopes.grid);assert.equal(JSON.stringify(record).includes('127.0.0.1'),false);
+  assert.equal(m.objects.get('0_userdata.0').type,'meta');
+  await b.write(serial,payload(now,1.5));assert.equal(m.fileWrites.length,1);
+  await b.write(serial,payload(now,1),true);assert.equal(m.fileWrites.length,1);
+  await b.write(serial,payload(now,1.5),true);assert.equal(m.fileWrites.length,2);
+  m.clock.now+=BACKUP_INTERVAL_MS;await b.write(serial,payload(now,1.6));assert.equal(m.fileWrites.length,3);
 });
-test('restore retains newer live data and handles month/year rollover and restart',async()=>{
- const m=memory(),oldTime=Date.parse('2026-12-31T12:00:00+01:00'),newTime=Date.parse('2027-01-01T12:00:00+01:00');m.clock.now=oldTime;await m.backup().sync(serial,payload(oldTime,1.2));m.clock.now=newTime;
- const local=payload(newTime,0.3),r=await prepareRestore(m.backup(),serial,local,newTime),a=new YieldArchive(newTime,r.payload.yields);a.observe(r.payload.daily);assert.equal(a.outputs().grid.month,0.3);assert.equal(a.outputs().grid.year,0.3);assert.deepEqual(JSON.parse(a.outputs().grid.daysJson),[{Datum:'31.12.2026',Ertrag:'1.2'}]);assert.equal(a.outputs().grid.daysRecorded,1);
- assert.equal(r.payload.daily.counters['grid.dailyEnergy'].confirmed,true);assert.equal(r.payload.daily.counters['grid.dailyEnergy'].boundary,1.2);
+test('write failures are reported once and retried later',async()=>{
+  const m=memory(),b=m.backup();m.faults.add('write');
+  await b.write(serial,payload(now,1),true);await b.write(serial,payload(now,1.1),true);
+  assert.equal(m.messages.filter(x=>x.level==='warn').length,1);m.faults.clear();
+  await b.write(serial,payload(now,1.2),true);assert.equal(m.fileWrites.length,1);
 });
-test('restore rejects incompatible independent period anchors rather than losing newer data',async()=>{const m=memory();await m.backup().sync(serial,payload(now,1));const local=payload(now,2);local.yields.scopes.grid.months['2026-11']=100000000;await assert.rejects(prepareRestore(m.backup(),serial,local,now),/RESTORE_WOULD_LOSE_DATA/);assert.equal(m.writes.length,1);});
-test('multiple offline device backups require an unambiguous device identity',async()=>{const m=memory(),b=m.backup();await b.sync(serial,payload(now,1));await b.sync('4143A0000002',payload(now,1));await assert.rejects(prepareRestore(m.backup(),undefined,undefined,now),/BACKUP_DEVICE_AMBIGUOUS/);});
-test('runtime serializes backup restoration, persists both stores and keeps public values consistent',async()=>{
- const m=memory();await m.backup().sync(serial,payload(now,1.2));const log={warn:()=>{},info:()=>{},debug:()=>{}};const runtime=new Runtime({config:m.config,publisher:new Publisher(m.adapter),client:{close:()=>{}},log,now:()=>now});
- assert.deepEqual(await runtime.restoreBackup(),{result:'restored'});assert.equal(runtime.serial,serial);assert.equal(JSON.parse(m.states.get(serial+'.internal.yields').val).schema,1);assert.equal(JSON.parse(m.states.get(serial+'.internal.dailyEnergy').val).day,'2026-11-10');assert.equal(m.states.get(serial+'.grid.yields.month').val,1.2);assert.equal(JSON.parse(m.states.get('info.deviceIdentity').val).serial,serial);await runtime.stop();
+test('invalid, foreign or unreadable backups are ignored and never overwritten',async()=>{
+  assert.equal(parse('{',serial,now),null);
+  assert.equal(parse(serialize('4143A0000002',payload(now,1),'x',now),serial,now),null);
+  assert.equal(parse(JSON.stringify({format:2,device:{serial},...payload(now,1)}),serial,now),null);
+  assert.equal(parse(serialize(serial,payload(Date.parse('2026-11-11T12:00:00+01:00'),1),'x',now),serial,now),null);
+  const m=memory(),b=m.backup();m.files.set('0_userdata.0/'+file,'broken');
+  assert.equal(await b.read(serial),null);await b.write(serial,payload(now,1),true);
+  assert.equal(m.files.get('0_userdata.0/'+file),'broken');assert.equal(m.fileWrites.length,0);
+  const r=memory(),c=r.backup();r.store(payload(now,1));r.faults.add('read');
+  assert.equal(await c.read(serial),null);r.faults.clear();await c.write(serial,payload(now,0),true);assert.equal(r.fileWrites.length,0);
 });
-test('offline restore selects the device before reading its existing yield data',async()=>{
- const newer=payload(now,3);
- for(const stores of [['daily','yields'],['daily'],['yields']]){
-   const m=memory();
-   await m.backup().sync(serial,payload(now,1));
-   if(stores.includes('daily'))m.states.set(serial+'.internal.dailyEnergy',{val:JSON.stringify(newer.daily)});
-   if(stores.includes('yields'))m.states.set(serial+'.internal.yields',{val:JSON.stringify(newer.yields)});
-   const runtime=new Runtime({config:m.config,publisher:new Publisher(m.adapter),client:{close(){}},now:()=>now,log:{warn(){}}});
-   assert.deepEqual(await runtime.restoreBackup(),{result:'restored'});
-   assert.equal(m.states.get(serial+'.grid.yields.month').val,3);
-   assert.equal(m.states.get(serial+'.pv0.yields.month').val,1.5);
-   if(stores.includes('daily'))assert.equal(m.states.get(serial+'.grid.dailyEnergy').val,3);
-   await runtime.stop();
- }
- const m=memory();
- await m.backup().sync(serial,payload(now,1));
- m.states.set(serial+'.internal.yields',{val:'invalid'});
- const runtime=new Runtime({config:m.config,publisher:new Publisher(m.adapter),client:{close(){}},now:()=>now,log:{warn(){}}});
- assert.deepEqual(await runtime.restoreBackup(),{error:'RESTORE_LOCAL_INVALID'});
- assert.equal(m.states.get(serial+'.internal.yields').val,'invalid');
- assert.ok(!m.states.has('info.deviceIdentity'));
- await runtime.stop();
+test('a new instance without own data restores daily counters and yields from the backup file',async()=>{
+  const m=memory();m.store(payload(now,1.2));
+  m.states.set('info.deviceIdentity',{val:JSON.stringify({host:'127.0.0.1',port:10081,serial})});
+  const runtime=m.runtime();await runtime.restoreIdentity();await runtime.dailyQueue;
+  assert.equal(m.value('grid.dailyEnergy'),1.2);assert.equal(m.value('grid.yields.month'),1.2);assert.equal(m.value('pv0.yields.month'),0.6);
+  assert.equal(JSON.parse(m.value('internal.yields')).schema,1);assert.equal(JSON.parse(m.value('internal.dailyEnergy')).day,'2026-11-10');
+  assert.ok(m.messages.some(x=>x.level==='warn'&&/wiederhergestellt/.test(x.message)));
+  await runtime.stop();
 });
-test('admin configuration selects userdata folders and routes backup commands through messagebox',async()=>{
- const schema=require('../admin/jsonConfig.json'),pkg=require('../io-package.json');assert.equal(pkg.native.backupEnabled,false);assert.equal(pkg.native.backupFolder,'');assert.equal(pkg.common.messagebox,true);assert.equal(schema.items.backupFolder.root,'0_userdata.0');assert.equal(schema.items.backupFolder.types,'folder');assert.equal(schema.items._backupRestore.command,'yieldBackupRestore');
- const {EventEmitter}=require('node:events'),core=require.resolve('@iobroker/adapter-core'),original=require.cache[core];class Fake extends EventEmitter{constructor(){super();this.answers=[];}sendTo(...args){this.answers.push(args);}}
- require.cache[core]={id:core,filename:core,loaded:true,exports:{Adapter:Fake}};delete require.cache[require.resolve('../main')];let instance;try{instance=require('../main')();}finally{if(original)require.cache[core]=original;else delete require.cache[core];delete require.cache[require.resolve('../main')];}
- let restores=0;instance.runtime={restoreBackup:async()=>{restores++;return {result:'restored'};},backupStatus:async()=>({status:'saved',lastSuccess:now,target,error:''})};
- await instance.onMessage({command:'yieldBackupRestore',from:'system.adapter.admin.0',message:{backupFolder:'forbidden'},callback:{id:1}});assert.equal(restores,1);assert.deepEqual(instance.answers[0][2],{result:'restored'});
- await instance.onMessage({command:'yieldBackupStatus',from:'system.adapter.admin.0',callback:{id:2}});assert.match(instance.answers[1][2].text,/Sicherung aktuell/);await instance.onMessage({command:'unknown',callback:{id:3}});assert.equal(instance.answers.length,2);
+test('a backup from an earlier day is archived once and the daily counters restart at zero',async()=>{
+  const m=memory();const before=Date.parse('2026-11-09T18:00:00+01:00');m.clock.now=before;m.store(payload(before,2));m.clock.now=now;
+  m.states.set('info.deviceIdentity',{val:JSON.stringify({host:'127.0.0.1',port:10081,serial})});
+  const runtime=m.runtime();await runtime.restoreIdentity();await runtime.dailyQueue;
+  assert.equal(m.value('grid.dailyEnergy'),0);assert.deepEqual(JSON.parse(m.value('grid.yields.daysJson')),[{Datum:'09.11.2026',Ertrag:'2'}]);assert.equal(m.value('grid.yields.month'),2);assert.equal(m.value('grid.yields.daysRecorded'),1);
+  await runtime.stop();
+  const again=m.runtime();await again.restoreIdentity();await again.dailyQueue;assert.equal(m.value('grid.yields.month'),2);assert.equal(m.value('grid.yields.daysRecorded'),1);await again.stop();
 });
-test('a partial internal restore retries without losing the backup or counting yields twice',async()=>{
- const m=memory();await m.backup().sync(serial,payload(now,1.2));const original=m.states.get(target).val;
- const runtime=new Runtime({config:m.config,publisher:new Publisher(m.adapter),client:{close:()=>{}},log:{warn:()=>{},info:()=>{},debug:()=>{}},now:()=>now});
- m.faults.add(serial+'.internal.dailyEnergy');assert.deepEqual(await runtime.restoreBackup(),{error:'RESTORE_PERSISTENCE_PENDING'});assert.equal(m.states.get(target).val,original);
- m.faults.clear();await runtime.saveDaily();await runtime.saveDaily();assert.equal(m.states.get(serial+'.grid.yields.month').val,1.2);assert.equal(m.states.get(serial+'.grid.yields.daysRecorded').val,0);assert.equal(m.writes.length,1);await runtime.stop();
+test('existing own data takes precedence and is written to the backup file on stop',async()=>{
+  const m=memory();m.store(payload(now,5));const own=payload(now,1);
+  m.states.set('info.deviceIdentity',{val:JSON.stringify({host:'127.0.0.1',port:10081,serial})});
+  m.states.set(serial+'.internal.dailyEnergy',{val:JSON.stringify(own.daily)});m.states.set(serial+'.internal.yields',{val:JSON.stringify(own.yields)});
+  const runtime=m.runtime();await runtime.restoreIdentity();await runtime.dailyQueue;
+  assert.equal(m.value('grid.dailyEnergy'),1);assert.ok(!m.messages.some(x=>/wiederhergestellt/.test(x.message)));
+  const written=m.fileWrites.length;assert.ok(written>=1);assert.equal(JSON.parse(m.files.get('0_userdata.0/'+file)).daily.counters['grid.dailyEnergy'].value,1);
+  runtime.daily.state.counters['grid.dailyEnergy'].value=1.5;await runtime.stop();
+  assert.equal(m.fileWrites.length,written+1);assert.equal(JSON.parse(m.files.get('0_userdata.0/'+file)).daily.counters['grid.dailyEnergy'].value,1.5);
 });
-test('restore refuses unknown local data and waits until startup identity loading finishes',async()=>{
- const m=memory();await m.backup().sync(serial,payload(now,1.2));const original=m.states.get(target).val;
- const runtime=new Runtime({config:m.config,publisher:new Publisher(m.adapter),client:{close:()=>{}},log:{warn:()=>{},info:()=>{},debug:()=>{}},now:()=>now});
- runtime.identityLoading=true;assert.deepEqual(await runtime.restoreBackup(),{error:'ADAPTER_NOT_READY'});runtime.identityLoading=false;
- runtime.serial=serial;runtime.daily=new Daily(now);runtime.yieldsError='YIELD_STORAGE_UNAVAILABLE';assert.deepEqual(await runtime.restoreBackup(),{error:'RESTORE_LOCAL_INVALID'});assert.equal(m.states.get(target).val,original);assert.ok(!m.states.has(serial+'.internal.yields'));await runtime.stop();
-});
-test('different credited shares cannot reduce effective month or year yields',async()=>{
- const m=memory(),credited=payload(now,2),scope=credited.yields.scopes.grid;scope.months['2026-11']=10000000;scope.years['2026']=10000000;scope.days['2026-11-10'].monthCredit=2000000;scope.days['2026-11-10'].yearCredit=2000000;
- await m.backup().sync(serial,credited);const local=structuredClone(credited);local.yields.scopes.grid.days['2026-11-10'].monthCredit=0;local.yields.scopes.grid.days['2026-11-10'].yearCredit=0;
- await assert.rejects(prepareRestore(m.backup(),serial,local,now),/RESTORE_WOULD_LOSE_DATA/);await m.backup().sync(serial,local);const original=m.states.get(target).val;assert.equal((await m.backup().sync(serial,credited)).status,'restoreRequired');assert.equal(m.states.get(target).val,original);
-});
-test('status requests and automatic saves update the readonly live display with the same status and Berlin timestamp',async()=>{
- const m=memory(),runtime=new Runtime({config:m.config,publisher:new Publisher(m.adapter),client:{close:()=>{}},log:{warn:()=>{},info:()=>{},debug:()=>{}},now:()=>m.clock.now});
- runtime.serial=serial;runtime.daily=new Daily(now,payload(now,1.2).daily);runtime.dailySerial=serial;runtime.yields=new YieldArchive(now,payload(now,1.2).yields);runtime.yieldsSerial=serial;
- await runtime.saveDaily();const first=m.states.get('info.yieldBackupText').val;assert.match(first,/Sicherung aktuell/);assert.match(first,/10\.11\.2026, 12:00:00/);assert.equal(m.objects.get('info.yieldBackupText').common.write,false);
- assert.equal(first,formatBackupStatus(await runtime.backupStatus()));m.clock.now+=60000;runtime.daily.state.counters['grid.dailyEnergy'].value=1.3;await runtime.saveDaily();assert.match(m.states.get('info.yieldBackupText').val,/12:01:00/);
- const record=JSON.parse(m.states.get(target).val);record.checksum='invalid';m.states.get(target).val=JSON.stringify(record);const failed=await runtime.backupStatus();assert.equal(failed.error,'INVALID_BACKUP');assert.match(m.states.get('info.yieldBackupText').val,/Sicherung nicht möglich.*INVALID_BACKUP/);
- const display=require('../admin/jsonConfig.json').items._backupStatus;assert.equal(display.type,'state');assert.equal(display.oid,'info.yieldBackupText');assert.equal(display.readOnly,true);assert.equal(display.control,'text');await runtime.stop();
+test('admin configuration offers the userdata backup checkbox enabled by default',()=>{
+  const schema=require('../admin/jsonConfig.json'),pkg=require('../io-package.json');
+  assert.equal(pkg.native.backupToUserdata,true);assert.equal(schema.items.backupToUserdata.type,'checkbox');assert.equal(schema.items.backupToUserdata.default,true);
+  assert.equal(pkg.native.backupEnabled,undefined);assert.equal(pkg.native.backupFolder,undefined);assert.equal(pkg.common.messagebox,undefined);
+  assert.ok(!Object.keys(schema.items).some(key=>['backupFolder','_backupRestore','_backupStatus','_backupRefresh'].includes(key)));
 });

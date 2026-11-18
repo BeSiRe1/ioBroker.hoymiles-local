@@ -106,7 +106,7 @@ test('offline startup flags retained measurements and alarms while preserving ar
     m.states.set(sn+'.'+id,{val,q:0x10,ack:true});
   }
   const client={initialize:async()=>{throw Error('offline');},close(){}};
-  const runtime=new Runtime({config:{host:'localhost'},publisher:m.publisher,client,log:{warn(){},debug(){}}});
+  const runtime=new Runtime({config:{host:'localhost',backupToUserdata:false},publisher:m.publisher,client,log:{warn(){},debug(){}}});
   try{
     await runtime.start();
     for(const id of ['grid.power','inverter.errorCode','pv0.dailyEnergyDtu'])assert.deepEqual(m.states.get(sn+'.'+id),{val:entries[id],q:0x50,ack:true});
@@ -118,7 +118,7 @@ test('runtime marks failures, preserves old values, then recovers and refreshes 
   const m=memory(),serial='4143A0000001';let failures=0,initializations=0,now=1000,closed=false;
   const client={serial,initialize:async()=>{initializations++;return {dtu_serial_number:serial};},live:async()=>{if(failures>0){failures--;throw Object.assign(Error(),{code:'TIMEOUT'});}return data;},close:()=>{closed=true;}};
   const messages=[];const log=Object.fromEntries(['info','warn','debug','error'].map(level=>[level,message=>messages.push({level,message})]));
-  const runtime=new Runtime({config:{host:'127.0.0.1',interval:1},publisher:m.publisher,client,log,now:()=>now});
+  const runtime=new Runtime({config:{host:'127.0.0.1',backupToUserdata:false,interval:1},publisher:m.publisher,client,log,now:()=>now});
   assert.equal(runtime.interval,35000);
   await runtime.readLive();assert.equal(m.states.get(serial+'.info.connected').val,true);
   failures=20;for(let i=0;i<20;i++){now+=40000;await runtime.readLive();}
@@ -132,12 +132,12 @@ test('auxiliary failures do not turn successful live measurements offline',async
   const m=memory(),serial='4143A0000001';
   const client={serial,initialize:async()=>({dtu_serial_number:serial}),live:async()=>data,history:async()=>{throw Object.assign(Error(),{code:'TIMEOUT'});},close:()=>{}};
   const messages=[];const log=Object.fromEntries(['info','warn','debug','error'].map(level=>[level,message=>messages.push({level,message})]));
-  const runtime=new Runtime({config:{host:'127.0.0.1'},publisher:m.publisher,client,log});
+  const runtime=new Runtime({config:{host:'127.0.0.1',backupToUserdata:false},publisher:m.publisher,client,log});
   await runtime.readLive();await runtime.readBackground();assert.equal(m.states.get(serial+'.info.connected').val,true);assert.equal(runtime.capabilities.history.status,'unavailable');assert.deepEqual(messages,[]);await runtime.stop();
 });
 test('background alarm confirmation preserves confirmed codes and a failed query clears its own code',async()=>{
   const m=memory();let reply={messages:[{data:{warns:[{code:41,s_time:10,e_time:0}]}}]};
-  const runtime=new Runtime({config:{host:'127.0.0.1'},publisher:m.publisher,client:{close:()=>{},alarms:async()=>reply},log:{info:()=>{},warn:()=>{},debug:()=>{}}});
+  const runtime=new Runtime({config:{host:'127.0.0.1',backupToUserdata:false},publisher:m.publisher,client:{close:()=>{},alarms:async()=>reply},log:{info:()=>{},warn:()=>{},debug:()=>{}}});
   runtime.serial='4143A0000001';runtime.initialized=true;runtime.tasks=[{name:'alarms',every:300000,next:0,read:()=>runtime.client.alarms()}];
   await runtime.readBackground();
   assert.equal(m.states.get('4143A0000001.inverter.errorCode').val,41);
@@ -150,7 +150,7 @@ test('background alarm confirmation preserves confirmed codes and a failed query
 });
 test('confirmed warning lists drive the error code independently of alarm acknowledgements and failures',async()=>{
   const m=memory(),messages=[],log=Object.fromEntries(['info','warn','debug','error'].map(level=>[level,message=>messages.push({level,message})]));
-  const runtime=new Runtime({config:{host:'127.0.0.1'},publisher:m.publisher,client:{close:()=>{}},log});
+  const runtime=new Runtime({config:{host:'127.0.0.1',backupToUserdata:false},publisher:m.publisher,client:{close:()=>{}},log});
   runtime.serial='4143A0000001';runtime.initialized=true;
   const run=async(name,reply)=>{runtime.roundRobin=0;runtime.tasks=[{name,every:300000,next:0,read:async()=>{if(reply instanceof Error)throw reply;return reply;}}];await runtime.readBackground();return m.states.get(runtime.serial+'.inverter.errorCode').val;};
   assert.equal(await run('alarms',{messages:[]}),null);
@@ -169,7 +169,7 @@ test('stopping during startup cannot create orphan timers or later DTU requests'
   let unblock,reads=0;
   const ready=new Promise(resolve=>{unblock=resolve;});
   const m=memory();
-  const runtime=new Runtime({config:{host:'127.0.0.1'},publisher:m.publisher,client:{close:()=>{},initialize:async()=>{reads++;}},log:{info:()=>{},warn:()=>{},debug:()=>{}}});
+  const runtime=new Runtime({config:{host:'127.0.0.1',backupToUserdata:false},publisher:m.publisher,client:{close:()=>{},initialize:async()=>{reads++;}},log:{info:()=>{},warn:()=>{},debug:()=>{}}});
   const original=runtime.availability.bind(runtime);runtime.availability=async connected=>{await ready;return original(connected);};
   const starting=runtime.start();await runtime.stop();unblock();await starting;
   assert.equal(runtime.ageTimer,undefined);assert.equal(runtime.timer,undefined);assert.equal(reads,0);

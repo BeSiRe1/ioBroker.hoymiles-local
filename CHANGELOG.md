@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 (2026-11-18)
+
+- Back up daily counters and yield archives like the espeasy-s0 adapter: file `0_userdata.0/hoymiles-local/<DTU serial>.json`, enabled by default, written every 5 minutes, at the day change and on stop.
+- Restore automatically when an instance starts without own data; invalid or unreadable backup files are never overwritten.
+- Remove the folder selection, status states and manual restore buttons of the previous backup; obsolete `info.yieldBackup*` states are deleted on start.
+- Fix repository, readme and icon links that still pointed to ioBroker.hoymiles-wifi; rename the icon to hoymiles-local.svg.
+- Fix README inconsistencies (Admin version, missing publish workflow) and enforce LF line endings so Windows builds match the shipped files.
+
 ## 0.5.0 (2026-11-17)
 
 - Use the dedicated ioBroker package and instance name hoymiles-local.

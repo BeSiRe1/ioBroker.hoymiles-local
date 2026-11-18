@@ -3,11 +3,11 @@
 // ============================================================
 
 // ************************************************************
-// Hoymiles WiFi – Abfragesteuerung
+// Hoymiles Local – Abfragesteuerung
 //
 // Steuert Livewerte, Hintergrundabfragen, Datenalter und Wiederanlauf.
 //
-// Version: 0.3.0.0 (17.11.2026)
+// Version: 0.4.0.0 (18.11.2026)
 //
 // ************************************************************
 // ============================================================
@@ -26,13 +26,13 @@
 // [BLOCK:100] Abhängigkeiten
 // ============================================================
 'use strict';
-import type {DailyState, Settings} from './model';
+import type {Archive, DailyState, Settings} from './model';
 import type {Publisher} from './publisher';
 import {Dtu} from './protocol';
 import {liveValues,historyValues,infoValues,alarmValues,value,signature} from './values';
 import {Daily,day,nextMidnight} from './daily';
 import {YieldArchive} from './yields';
-import {YieldBackup,prepareRestore,formatBackupStatus} from './backup';
+import {YieldBackup,BACKUP_META_ID,backupPath} from './backup';
 // ============================================================
 
 // ============================================================
@@ -80,8 +80,7 @@ class Runtime{
   declare yieldsReplay: Map<string, DailyState>;
   declare yieldsRetryAt: number;
   declare backup: YieldBackup;
-  declare backupOutput: string;
-  declare identityLoading: boolean;
+  declare backupDay: string;
   declare tasks: {
         next: number;
         name: string;
@@ -103,7 +102,7 @@ class Runtime{
     this.dailyQueue=Promise.resolve();this.daily=undefined;this.dailySerial=undefined;this.dailyPersisted=undefined;this.dailyOutput=undefined;this.lastObservation=undefined;this.historyProof=undefined;
     this.errorCodeSource=undefined;
     this.yields=undefined;this.yieldsSerial=undefined;this.yieldsPersisted=undefined;this.yieldsOutput=undefined;this.yieldsError=undefined;this.yieldsReplay=new Map();this.yieldsRetryAt=0;
-    this.backup=new YieldBackup({adapter:publisher.adapter,config,now});this.backupOutput=undefined;this.identityLoading=false;
+    this.backup=new YieldBackup({adapter:publisher.adapter,config,log,now});this.backupDay=undefined;
     this.tasks=[{name:'history',every:Math.max(300,Number(config.historyInterval)||300)*1000,read:()=>this.client.history()}, {name:'config',every:900000,read:()=>this.client.config()}, {name:'network',every:900000,read:()=>this.client.network()}, {name:'information',every:7200000,read:()=>this.client.information()}, {name:'warnings',every:300000,read:()=>this.client.warnings()}, {name:'alarms',every:300000,read:()=>this.client.alarms()}, {name:'events',every:300000,read:()=>this.client.events()}].map(task=>({...task,next:0}));
   }
   async state(values){if(!this.closed)await this.publisher.publish(this.serial||'',values);}
@@ -114,24 +113,33 @@ class Runtime{
   }
   async loadDaily(){
     if(this.closed||!this.serial||this.dailySerial===this.serial)return;
-    const saved=await this.publisher.read(this.serial,'internal.dailyEnergy');if(this.closed)return;
+    const serial=this.serial;
+    const saved=await this.publisher.read(serial,'internal.dailyEnergy');if(this.closed)return;
+    let restored;
+    if(!saved?.val){
+      let archive;try{archive=await this.publisher.read(serial,'internal.yields');}catch{archive={val:'unavailable'};}
+      if(this.closed)return;
+      if(!archive?.val){restored=await this.backup.read(serial);if(this.closed)return;}
+    }
     this.daily=undefined;this.dailySerial=undefined;this.lastObservation=undefined;this.historyProof=undefined;
+    const source=restored?JSON.stringify(restored.payload.daily):saved?.val;
     let parsed;
-    if(saved?.val){try{parsed=JSON.parse(String(saved.val));}catch{this.log.warn('Gespeicherter Tagesertrag ist ungültig; positive Werte werden erst nach Bestätigung übernommen.');}}
+    if(source){try{parsed=JSON.parse(String(source));}catch{this.log.warn('Gespeicherter Tagesertrag ist ungültig; positive Werte werden erst nach Bestätigung übernommen.');}}
     try{this.daily=new Daily(this.now(),parsed);}catch(error){if(error.message==='CLOCK_MOVED_BACKWARDS')throw error;this.log.warn('Gespeicherter Tagesertrag ist ungültig; starte mit unbestätigtem Tagesstand.');this.daily=new Daily(this.now());parsed=undefined;}
-    this.dailySerial=this.serial;this.dailyPersisted=typeof saved?.val==='string'?saved.val:undefined;this.dailyOutput=undefined;this.lastObservation=undefined;this.historyProof=undefined;
-    await this.loadYields(parsed);
+    this.dailySerial=serial;this.dailyPersisted=!restored&&typeof saved?.val==='string'?saved.val:undefined;this.dailyOutput=undefined;this.lastObservation=undefined;this.historyProof=undefined;
+    if(restored)this.log.warn(`Erträge der DTU ${serial} aus der Sicherung ${BACKUP_META_ID}/${backupPath(serial)} wiederhergestellt (gespeichert ${restored.savedAt} von ${restored.instance}).`);
+    await this.loadYields(parsed,restored?.payload.yields);
     await this.saveDaily();
   }
-  async loadYields(previousDaily?:DailyState){
+  async loadYields(previousDaily?:DailyState,restoredArchive?:Archive){
     const previousError=this.yieldsError;let readCompleted=false;
     if(this.yieldsSerial!==this.serial)this.yieldsReplay=new Map();
     if(previousDaily)this.rememberYieldDaily(previousDaily);
     this.yields=undefined;this.yieldsSerial=this.serial;this.yieldsPersisted=undefined;this.yieldsOutput=undefined;
     try{
-      const saved=await this.publisher.read(this.serial,'internal.yields');if(this.closed)return;
+      const saved=restoredArchive?undefined:await this.publisher.read(this.serial,'internal.yields');if(this.closed)return;
       readCompleted=true;
-      const parsed=saved?.val?JSON.parse(String(saved.val)):undefined;
+      const parsed=restoredArchive?JSON.parse(JSON.stringify(restoredArchive)):saved?.val?JSON.parse(String(saved.val)):undefined;
       const archive=new YieldArchive(this.now(),parsed);
       for(const date of [...this.yieldsReplay.keys()].sort())archive.observe(this.yieldsReplay.get(date));
       archive.roll(this.now());
@@ -168,62 +176,13 @@ class Runtime{
         await this.publisher.publish(this.serial,entries,'yields');this.yieldsOutput=signature;
       }
       if(this.yieldsError!==''){await this.state([value('info.yieldsError','','Fehler der Ertragsspeicherung')]);this.yieldsError='';}
-      const result=await this.backup.sync(this.serial,{yields:JSON.parse(stored),daily:JSON.parse(this.daily.serialize())});await this.publishBackupStatus(result).catch(()=>{});
+      const force=this.backupDay!==this.daily.state.day;
+      await this.backup.write(this.serial,{yields:JSON.parse(stored),daily:JSON.parse(this.daily.serialize())},force);this.backupDay=this.daily.state.day;
     }catch(error){
       const code='YIELD_PERSISTENCE_FAILED';
       if(this.yieldsError!==code)this.log.warn('Ertragsarchiv konnte nicht gespeichert werden; die Übertragung wird erneut versucht.');
       this.yieldsError=code;await this.state([value('info.yieldsError',code,'Fehler der Ertragsspeicherung')]).catch(()=>{});
     }
-  }
-  async publishBackupStatus(result){
-    const signature=JSON.stringify(result);if(signature===this.backupOutput||this.closed)return;
-    await this.publisher.publish('',[value('info.yieldBackupStatus',result.status,'Status der Ertragssicherung'),value('info.yieldBackupError',result.error,'Fehler der Ertragssicherung'),value('info.yieldBackupLastSuccess',result.lastSuccess,'Letzte erfolgreiche Ertragssicherung','ms','date'),value('info.yieldBackupTarget',result.target,'Ziel der Ertragssicherung'),value('info.yieldBackupText',formatBackupStatus(result),'Sicherungsstatus und letzter Erfolg')]);this.backupOutput=signature;
-  }
-  async backupStatus(){
-    let result;await this.dailyOperation(async()=>{result=await this.backup.inspect(this.serial);await this.publishBackupStatus(result);});
-    return result||{status:'unavailable',error:'ADAPTER_NOT_READY',lastSuccess:0,target:''};
-  }
-  async localRestoreData(serial,now){
-    if(this.serial){
-      if(this.serial!==serial||!this.daily||!this.yields)throw Object.assign(Error(),{code:'RESTORE_LOCAL_INVALID'});
-      return {daily:JSON.parse(this.daily.serialize()),yields:JSON.parse(this.yields.serialize())};
-    }
-    try{
-      const [dayState,archiveState]=await Promise.all([
-        this.publisher.read(serial,'internal.dailyEnergy'),this.publisher.read(serial,'internal.yields')
-      ]);
-      if(!dayState&&!archiveState)return undefined;
-      const daily=dayState?JSON.parse(String(dayState.val)):new Daily(now).state;
-      const yields=archiveState?JSON.parse(String(archiveState.val)):new YieldArchive(now).state;
-      if(!daily||!yields)throw Error('INVALID_STORAGE');
-      new Daily(now,daily);
-      new YieldArchive(now,yields);
-      return {daily,yields};
-    }catch{throw Object.assign(Error(),{code:'RESTORE_LOCAL_INVALID'});}
-  }
-  async restoreBackup(){
-    let result:{error?:string;result?:string}={error:'ADAPTER_NOT_READY'};
-    await this.dailyOperation(async()=>{
-      let accepted=false;
-      try{
-        if(!this.backup.enabled())throw Object.assign(Error(),{code:'BACKUP_DISABLED'});
-        if(this.identityLoading)throw Object.assign(Error(),{code:'ADAPTER_NOT_READY'});
-        const now=this.now();
-        const serial=this.serial||(await this.backup.find()).serial;
-        const local=await this.localRestoreData(serial,now);
-        const restored=await prepareRestore(this.backup,serial,local,now);
-        accepted=true;
-        this.serial=restored.serial;this.daily=new Daily(now,restored.payload.daily);this.dailySerial=this.serial;this.dailyPersisted=undefined;this.dailyOutput=undefined;
-        this.yields=new YieldArchive(now,restored.payload.yields);this.yieldsSerial=this.serial;this.yieldsPersisted=undefined;this.yieldsOutput=undefined;this.yieldsError=undefined;this.yieldsReplay.clear();
-        await this.publisher.device(this.serial,`Hoymiles DTU ${this.serial}`);
-        await this.publisher.publish('',[value('info.deviceIdentity',JSON.stringify({host:this.config.host.trim(),port:Number(this.config.port)||10081,serial:this.serial}),'Zuordnung der bekannten DTU',undefined,'json')]);
-        await this.saveDaily();
-        if(this.yieldsError)throw Object.assign(Error(),{code:'RESTORE_PERSISTENCE_PENDING'});
-        const persisted=await this.publisher.read(this.serial,'internal.yields'),daily=await this.publisher.read(this.serial,'internal.dailyEnergy');
-        if(persisted?.val!==this.yieldsPersisted||daily?.val!==this.dailyPersisted)throw Object.assign(Error(),{code:'RESTORE_VERIFY_FAILED'});
-        result={result:'restored'};
-      }catch(e){result={error:accepted&&e.code!=='RESTORE_VERIFY_FAILED'?'RESTORE_PERSISTENCE_PENDING':e.code||'RESTORE_FAILED'};}
-    });return result;
   }
   async saveDaily(){
     if(this.closed||!this.daily)return;
@@ -325,12 +284,10 @@ class Runtime{
   }
   async start(){
     if(this.closed)return;
-    this.started=true;this.identityLoading=true;
-    try{
-      await this.publisher.invalidateStoredMeasurements();
-      await this.publishBackupStatus(this.backup.enabled()?{status:'waitingForDevice',error:'',lastSuccess:0,target:''}:{status:'disabled',error:'',lastSuccess:0,target:''});
-      await this.restoreIdentity();
-    }finally{this.identityLoading=false;}if(this.closed)return;
+    this.started=true;
+    await this.publisher.invalidateStoredMeasurements();
+    await this.restoreIdentity();
+    if(this.closed)return;
     this.armMidnight();
     await this.availability(false);
     if(this.closed)return;
@@ -348,6 +305,7 @@ class Runtime{
     this.closed=true;clearTimeout(this.timer);clearInterval(this.ageTimer);clearTimeout(this.midnightTimer);this.client.close();
     await Promise.allSettled([this.inFlight,this.ageInFlight,this.dailyQueue]);
     try{
+      if(this.serial&&this.daily&&this.yields&&this.dailySerial===this.serial&&this.yieldsSerial===this.serial)await this.backup.write(this.serial,{daily:JSON.parse(this.daily.serialize()),yields:JSON.parse(this.yields.serialize())},true);
       await this.publisher.publish('',[value('info.connection',false,'DTU-Verbindung')]);
       if(this.serial)await this.publisher.publish(this.serial,[value('info.connected',false,'Letzte Liveabfrage erfolgreich'),value('info.stale',true,'Liveantwort veraltet')]);
     }finally{this.publisher.close();}
@@ -364,6 +322,11 @@ export {Runtime};
 // ============================================================
 // [BLOCK:1000] Änderungsverlauf
 // ============================================================
+// 0.4.0.0 (18.11.2026):
+// - Ertragssicherung als Datei unter 0_userdata.0: Schreiben alle 5 Minuten, beim Tageswechsel und beim Beenden.
+// - Startet eine Instanz ohne eigenen Tages- und Ertragsbestand, werden die Daten automatisch aus der Sicherung übernommen.
+// - Manuelle Wiederherstellung und Sicherungsstatus entfernt.
+//
 // 0.3.0.0 (17.11.2026):
 // - Modul auf TypeScript umgestellt.
 //
@@ -387,7 +350,7 @@ export {Runtime};
 //
 // 0.2.1.0 (07.11.2026): 
 // - Den aktuellen Wechselrichter-Fehlercode aus der Alarmabfrage veröffentlichen.
-
+//
 // 0.2.0.0 (07.11.2026): 
 // - Die vereinfachte Datenstruktur und die Online-/Offline-Markierung verwenden.
 //

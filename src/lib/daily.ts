@@ -3,11 +3,11 @@
 // ============================================================
 
 // ************************************************************
-// Hoymiles WiFi – Tageserträge
+// Hoymiles Local – Tageserträge
 //
 // Setzt Tageserträge um Mitternacht zurück und sperrt alte Vortagesstände.
 //
-// Version: 0.3.0.0 (17.11.2026)
+// Version: 0.3.0.1 (18.11.2026)
 //
 // ************************************************************
 // ============================================================
@@ -96,6 +96,9 @@ export {Daily,day,nextMidnight,ZONE};
 // ============================================================
 // [BLOCK:1000] Änderungsverlauf
 // ============================================================
+// 0.3.0.1 (18.11.2026):
+// - Skriptname im Systemkopf auf Hoymiles Local korrigiert.
+//
 // 0.3.0.0 (17.11.2026):
 // - Modul auf TypeScript umgestellt.
 //

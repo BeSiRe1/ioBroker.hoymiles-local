@@ -1,8 +1,12 @@
 {
   "common": {
     "name": "hoymiles-local",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "news": {
+      "0.6.0": {
+        "de": "Ertragssicherung wie im Adapter espeasy-s0 als Datei 0_userdata.0/hoymiles-local/<DTU>.json, standardmäßig eingeschaltet und automatisch wiederhergestellt; Repository-Adressen und Icon auf hoymiles-local korrigiert.",
+        "en": "Yield backup like the espeasy-s0 adapter as file 0_userdata.0/hoymiles-local/<DTU>.json, enabled by default and restored automatically; repository links and icon fixed to hoymiles-local."
+      },
       "0.5.0": {
         "de": "Eigener Adaptername hoymiles-local, Schutz lokaler Erträge bei Offline-Wiederherstellung und Kennzeichnung veralteter Messwerte nach Neustart.",
         "en": "Use the hoymiles-local adapter name, protect existing yields during offline restoration and mark retained readings stale on startup."
@@ -72,8 +76,8 @@
       "type": "free",
       "link": "https://opensource.org/license/mit"
     },
-    "icon": "hoymiles-wifi.svg",
-    "readme": "https://github.com/BeSiRe1/ioBroker.hoymiles-wifi/blob/main/README.md",
+    "icon": "hoymiles-local.svg",
+    "readme": "https://github.com/BeSiRe1/ioBroker.hoymiles-local/blob/main/README.md",
     "docs": {
       "en": "README.md",
       "de": "README.md"
@@ -107,9 +111,8 @@
         "admin": ">=7.1.0"
       }
     ],
-    "extIcon": "https://raw.githubusercontent.com/BeSiRe1/ioBroker.hoymiles-wifi/main/admin/hoymiles-wifi.svg",
-    "tier": 3,
-    "messagebox": true
+    "extIcon": "https://raw.githubusercontent.com/BeSiRe1/ioBroker.hoymiles-local/main/admin/hoymiles-local.svg",
+    "tier": 3
   },
   "native": {
     "host": "",
@@ -117,8 +120,7 @@
     "interval": 35,
     "timeout": 10,
     "historyInterval": 300,
-    "backupEnabled": false,
-    "backupFolder": ""
+    "backupToUserdata": true
   },
   "instanceObjects": [
     {
@@ -142,22 +144,6 @@
         "read": true,
         "write": false,
         "def": false
-      },
-      "native": {}
-    },
-    {
-      "_id": "info.yieldBackupText",
-      "type": "state",
-      "common": {
-        "name": {
-          "de": "Sicherungsstatus und letzter Erfolg",
-          "en": "Backup status and last success"
-        },
-        "type": "string",
-        "role": "text",
-        "read": true,
-        "write": false,
-        "def": "Warte auf Sicherungsstatus"
       },
       "native": {}
     }

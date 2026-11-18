@@ -3,11 +3,11 @@
 // ============================================================
 
 // ************************************************************
-// Hoymiles WiFi – Ertragsarchiv
+// Hoymiles Local – Ertragsarchiv
 //
 // Speichert bestätigte Tagesstände und führt Monats- und Jahreserträge fort.
 //
-// Version: 0.2.0.0 (17.11.2026)
+// Version: 0.2.0.1 (18.11.2026)
 //
 // ************************************************************
 // ============================================================
@@ -195,6 +195,9 @@ export {YieldArchive,seedArchive};
 // ============================================================
 // [BLOCK:1000] Änderungsverlauf
 // ============================================================
+// 0.2.0.1 (18.11.2026):
+// - Skriptname im Systemkopf auf Hoymiles Local korrigiert.
+//
 // 0.2.0.0 (17.11.2026):
 // - Modul auf TypeScript umgestellt.
 //

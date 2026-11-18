@@ -1,18 +1,18 @@
 {
   "name": "iobroker.hoymiles-local",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Local Hoymiles DTU reader with PV monitoring, complete power history and midnight daily energy reset",
   "main": "main.js",
   "license": "MIT",
   "author": "BeSiRe1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/BeSiRe1/ioBroker.hoymiles-wifi.git"
+    "url": "https://github.com/BeSiRe1/ioBroker.hoymiles-local.git"
   },
   "bugs": {
-    "url": "https://github.com/BeSiRe1/ioBroker.hoymiles-wifi/issues"
+    "url": "https://github.com/BeSiRe1/ioBroker.hoymiles-local/issues"
   },
-  "homepage": "https://github.com/BeSiRe1/ioBroker.hoymiles-wifi#readme",
+  "homepage": "https://github.com/BeSiRe1/ioBroker.hoymiles-local#readme",
   "engines": {
     "node": ">=22.19.0"
   },

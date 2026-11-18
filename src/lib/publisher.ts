@@ -3,11 +3,11 @@
 // ============================================================
 
 // ************************************************************
-// Hoymiles WiFi – Datenpunktausgabe
+// Hoymiles Local – Datenpunktausgabe
 //
 // Erstellt lesbare Datenpunkte und kennzeichnet fehlgeschlagene Abfragen.
 //
-// Version: 0.3.0.0 (17.11.2026)
+// Version: 0.3.0.1 (18.11.2026)
 //
 // ************************************************************
 // ============================================================
@@ -111,6 +111,9 @@ export {Publisher};
 // ============================================================
 // [BLOCK:1000] Änderungsverlauf
 // ============================================================
+// 0.3.0.1 (18.11.2026):
+// - Skriptname im Systemkopf auf Hoymiles Local korrigiert.
+//
 // 0.3.0.0 (17.11.2026):
 // - Modul auf TypeScript umgestellt.
 //

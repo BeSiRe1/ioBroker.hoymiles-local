@@ -28,8 +28,7 @@ tests.integration(path.join(__dirname, '..'),{
           });
         });
         await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-        await harness.changeAdapterConfig('hoymiles-local',{native:{host:'127.0.0.1',port:server.address().port,interval:35,timeout:3,historyInterval:300,backupEnabled:true,backupFolder:'0_userdata.0.TestYieldBackup'}});
-        await new Promise((resolve,reject)=>harness.objects.setObject('0_userdata.0.TestYieldBackup',{_id:'0_userdata.0.TestYieldBackup',type:'folder',common:{name:'Test yield backup'},native:{}},error=>error?reject(error):resolve()));
+        await harness.changeAdapterConfig('hoymiles-local',{native:{host:'127.0.0.1',port:server.address().port,interval:35,timeout:3,historyInterval:300,backupToUserdata:true}});
         const namespace='hoymiles-local.0.';
         const object=async(id,type)=>new Promise((resolve,reject)=>harness.objects.setObject(namespace+id,{_id:namespace+id,type,common:type==='state'?{name:id,type:'string',role:'text',read:true,write:false}:{name:id},native:{}},error=>error?reject(error):resolve()));
         for(const [id,type]of [[sn,'device'],[sn+'.inverter','channel'],[sn+'.pv0','channel'],['info.deviceIdentity','state'],[sn+'.internal.dailyEnergy','state']])await object(id,type);
@@ -61,11 +60,9 @@ tests.integration(path.join(__dirname, '..'),{
         assert.equal((await object(sn+'.grid.yields.month')).common.unit,'kWh');
         assert.equal((await object(sn+'.grid.yields.daysJson')).common.role,'json');
         assert.equal((await state(sn+'.info.yieldsError')).val,'');
-        const externalId='0_userdata.0.TestYieldBackup.Hoymiles_'+sn+'_Ertragssicherung';
-        const external=await until(()=>new Promise((resolve,reject)=>harness.states.getState(externalId,(error,item)=>error?reject(error):resolve(item))));
-        const backup=JSON.parse(external.val);assert.equal(backup.deviceSerial,sn);assert.equal(backup.schema,1);assert.ok(backup.payload.yields.scopes.grid);assert.equal(backup.payload.daily.schema,1);
-        assert.equal((await state('info.yieldBackupStatus')).val,'saved');assert.ok((await state('info.yieldBackupLastSuccess')).val>0);
-        const backupText=await state('info.yieldBackupText');assert.match(backupText.val,/Sicherung aktuell/);assert.match(backupText.val,/Letzte erfolgreiche Sicherung:/);assert.equal((await object('info.yieldBackupText')).common.write,false);
+        const readBackup=()=>new Promise(resolve=>harness.objects.readFile('0_userdata.0','hoymiles-local/'+sn+'.json',(error,data)=>resolve(error?null:data)));
+        const backup=JSON.parse(String(await until(readBackup)));assert.equal(backup.format,1);assert.equal(backup.device.serial,sn);assert.equal(backup.instance,'hoymiles-local.0');assert.ok(backup.yields.scopes.grid);assert.equal(backup.daily.schema,1);
+        assert.ok(!(await object('info.yieldBackupText')));
         assert.equal((await state(sn+'.grid.dailyEnergyDtu')).val,0.123);
         const curveDay=await until(()=>state(sn+'.history.curveDay'));const counterDay=await state(sn+'.info.dailyDay');
         if(curveDay.val===counterDay.val){assert.equal((await until(async()=>{const item=await state(sn+'.info.dailyConfirmed');return item?.val===true?item:null;})).val,true);assert.equal((await state(sn+'.grid.dailyEnergy')).val,0.123);}

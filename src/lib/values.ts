@@ -3,11 +3,11 @@
 // ============================================================
 
 // ************************************************************
-// Hoymiles WiFi – Betriebsdaten
+// Hoymiles Local – Betriebsdaten
 //
 // Maskiert Zugangsdaten und bereitet Betriebswerte und History auf.
 //
-// Version: 0.3.0.0 (17.11.2026)
+// Version: 0.3.0.1 (18.11.2026)
 //
 // ************************************************************
 // ============================================================
@@ -142,6 +142,10 @@ export {sanitize,serial,liveValues,historyValues,infoValues,alarmValues,value,si
 // ============================================================
 // [BLOCK:1000] Änderungsverlauf
 // ============================================================
+// 0.3.0.1 (18.11.2026):
+// - Skriptname im Systemkopf auf Hoymiles Local korrigiert.
+// - Fehlende Trennzeile im Änderungsverlauf ergänzt.
+//
 // 0.3.0.0 (17.11.2026):
 // - Modul auf TypeScript umgestellt.
 //
@@ -156,7 +160,7 @@ export {sanitize,serial,liveValues,historyValues,infoValues,alarmValues,value,si
 //
 // 0.2.1.0 (07.11.2026): 
 // - Aktuellen Wechselrichter-Fehlercode aus bestätigten aktiven Alarmdaten bereitstellen.
-
+//
 // 0.2.0.0 (07.11.2026): 
 // - Rohdatenprojektion und doppelte Wechselrichter-/PV-Unterbäume entfernen.
 //

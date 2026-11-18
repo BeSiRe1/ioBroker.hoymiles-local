@@ -4,7 +4,7 @@ export interface ArchiveDay { energy: number; monthCredit: number; yearCredit: n
 export interface Scope { days: Record<string, ArchiveDay>; months: Record<string, number>; years: Record<string, number>; closedMonths: Record<string, string>; closedYears: Record<string, string>; averageSum: number; averageCount: number; startDate: string; imported: boolean }
 export interface Archive { schema: number; zone: string; day: string; scopes: Record<string, Scope> }
 export interface BackupPayload { daily: DailyState; yields: Archive }
-export interface Settings { host: string; port?: number; interval?: number; historyInterval?: number; timeout?: number; backupEnabled?: boolean; backupFolder?: string }
+export interface Settings { host: string; port?: number; interval?: number; historyInterval?: number; timeout?: number; backupToUserdata?: boolean }
 export type Packet = Record<string, any>;
 
 export type RawNumber = string | number;
